@@ -12,26 +12,28 @@ export type { Stats, FSWatcher, WatchListener, WatchEventType };
 const _decoder = new TextDecoder();
 const _encoder = new TextEncoder();
 
+export type PathLike = string | URL;
+
 export interface FsShim {
-  readFileSync(path: string): Buffer;
-  readFileSync(path: string, encoding: 'utf8' | 'utf-8'): string;
-  readFileSync(path: string, options: { encoding: 'utf8' | 'utf-8' }): string;
-  readFileSync(path: string, options: { encoding?: null }): Buffer;
-  writeFileSync(path: string, data: string | Uint8Array): void;
-  existsSync(path: string): boolean;
-  mkdirSync(path: string, options?: { recursive?: boolean }): void;
-  readdirSync(path: string): string[];
-  readdirSync(path: string, options: { withFileTypes: true }): Dirent[];
-  readdirSync(path: string, options?: { withFileTypes?: boolean; encoding?: string } | string): string[] | Dirent[];
-  statSync(path: string): Stats;
-  lstatSync(path: string): Stats;
+  readFileSync(path: PathLike): Buffer;
+  readFileSync(path: PathLike, encoding: 'utf8' | 'utf-8'): string;
+  readFileSync(path: PathLike, options: { encoding: 'utf8' | 'utf-8' }): string;
+  readFileSync(path: PathLike, options: { encoding?: null }): Buffer;
+  writeFileSync(path: PathLike, data: string | Uint8Array): void;
+  existsSync(path: PathLike): boolean;
+  mkdirSync(path: PathLike, options?: { recursive?: boolean }): void;
+  readdirSync(path: PathLike): string[];
+  readdirSync(path: PathLike, options: { withFileTypes: true }): Dirent[];
+  readdirSync(path: PathLike, options?: { withFileTypes?: boolean; encoding?: string } | string): string[] | Dirent[];
+  statSync(path: PathLike): Stats;
+  lstatSync(path: PathLike): Stats;
   fstatSync(fd: number): Stats;
-  unlinkSync(path: string): void;
-  rmdirSync(path: string): void;
-  renameSync(oldPath: string, newPath: string): void;
-  realpathSync(path: string): string;
-  accessSync(path: string, mode?: number): void;
-  copyFileSync(src: string, dest: string): void;
+  unlinkSync(path: PathLike): void;
+  rmdirSync(path: PathLike): void;
+  renameSync(oldPath: PathLike, newPath: PathLike): void;
+  realpathSync(path: PathLike): string;
+  accessSync(path: PathLike, mode?: number): void;
+  copyFileSync(src: PathLike, dest: PathLike): void;
   openSync(path: string, flags: string | number, mode?: number): number;
   closeSync(fd: number): void;
   readSync(fd: number, buffer: Buffer | Uint8Array, offset: number, length: number, position: number | null): number;
@@ -58,20 +60,20 @@ export interface FsShim {
 }
 
 export interface FsPromises {
-  readFile(path: string): Promise<Buffer>;
-  readFile(path: string, encoding: 'utf8' | 'utf-8'): Promise<string>;
-  readFile(path: string, options: { encoding: 'utf8' | 'utf-8' }): Promise<string>;
-  writeFile(path: string, data: string | Uint8Array): Promise<void>;
-  stat(path: string): Promise<Stats>;
-  lstat(path: string): Promise<Stats>;
-  readdir(path: string): Promise<string[]>;
-  mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
-  unlink(path: string): Promise<void>;
-  rmdir(path: string): Promise<void>;
-  rename(oldPath: string, newPath: string): Promise<void>;
-  access(path: string, mode?: number): Promise<void>;
-  realpath(path: string): Promise<string>;
-  copyFile(src: string, dest: string): Promise<void>;
+  readFile(path: PathLike): Promise<Buffer>;
+  readFile(path: PathLike, encoding: 'utf8' | 'utf-8'): Promise<string>;
+  readFile(path: PathLike, options: { encoding: 'utf8' | 'utf-8' }): Promise<string>;
+  writeFile(path: PathLike, data: string | Uint8Array): Promise<void>;
+  stat(path: PathLike): Promise<Stats>;
+  lstat(path: PathLike): Promise<Stats>;
+  readdir(path: PathLike): Promise<string[]>;
+  mkdir(path: PathLike, options?: { recursive?: boolean }): Promise<void>;
+  unlink(path: PathLike): Promise<void>;
+  rmdir(path: PathLike): Promise<void>;
+  rename(oldPath: PathLike, newPath: PathLike): Promise<void>;
+  access(path: PathLike, mode?: number): Promise<void>;
+  realpath(path: PathLike): Promise<string>;
+  copyFile(src: PathLike, dest: PathLike): Promise<void>;
 }
 
 export interface FsConstants {
@@ -156,39 +158,6 @@ function createBuffer(data: Uint8Array): Buffer {
  * Convert a path-like value to a string path
  * Handles URL objects (file:// protocol) and Buffer
  */
-// Path remapping for CLI tools that use incorrect absolute paths
-// This maps /convex/ -> /project/convex/ to fix the Convex CLI path issue
-const pathRemaps: Array<{ from: string; to: string }> = [
-  { from: '/convex/', to: '/project/convex/' },
-];
-
-function remapPath(path: string): string {
-  // Strip 'vfs:' namespace prefix from paths (comes from esbuild namespace)
-  if (path.includes('vfs:')) {
-    const cleanPath = path.replace(/vfs:/g, '');
-    if (!remapPath.logged) remapPath.logged = new Set();
-    if (!remapPath.logged.has(path)) {
-      console.log(`[fs] Stripping vfs: prefix: ${path} -> ${cleanPath}`);
-      remapPath.logged.add(path);
-    }
-    path = cleanPath;
-  }
-
-  for (const remap of pathRemaps) {
-    if (path === remap.from.slice(0, -1) || path.startsWith(remap.from)) {
-      const remapped = remap.to + path.slice(remap.from.length);
-      // Only log once per unique path to avoid noise
-      if (!remapPath.logged) remapPath.logged = new Set();
-      if (!remapPath.logged.has(path)) {
-        console.log(`[fs] Remapping path: ${path} -> ${remapped}`);
-        remapPath.logged.add(path);
-      }
-      return remapped;
-    }
-  }
-  return path;
-}
-remapPath.logged = new Set<string>();
 
 function toPath(pathLike: unknown, getCwd?: () => string): string {
   let path: string;
@@ -216,9 +185,6 @@ function toPath(pathLike: unknown, getCwd?: () => string): string {
     const cwd = getCwd();
     path = cwd.endsWith('/') ? cwd + path : cwd + '/' + path;
   }
-
-  // Apply path remapping for CLI tools that use incorrect absolute paths
-  path = remapPath(path);
 
   return path;
 }
@@ -321,10 +287,30 @@ export function createFsShim(vfs: VirtualFS, getCwd?: () => string): FsShim {
     lstat(pathLike: unknown): Promise<Stats> {
       return this.stat(resolvePath(pathLike));
     },
-    readdir(pathLike: unknown): Promise<string[]> {
+    readdir(pathLike: unknown, options?: { withFileTypes?: boolean } | string): Promise<string[] | Dirent[]> {
       return new Promise((resolve, reject) => {
         try {
-          resolve(vfs.readdirSync(resolvePath(pathLike)));
+          const path = resolvePath(pathLike);
+          const entries = vfs.readdirSync(path);
+          const opts = typeof options === 'string' ? {} : options;
+          if (opts?.withFileTypes) {
+            const dirents = entries.map(name => {
+              const entryPath = path.endsWith('/') ? path + name : path + '/' + name;
+              let isDir = false;
+              let isFile = false;
+              try {
+                const stat = vfs.statSync(entryPath);
+                isDir = stat.isDirectory();
+                isFile = stat.isFile();
+              } catch {
+                isFile = true;
+              }
+              return new Dirent(name, isDir, isFile);
+            });
+            resolve(dirents);
+          } else {
+            resolve(entries);
+          }
         } catch (err) {
           reject(err);
         }
@@ -442,10 +428,6 @@ export function createFsShim(vfs: VirtualFS, getCwd?: () => string): FsShim {
         return;
       }
       const path = resolvePath(pathLike);
-      // Debug: Log when writing to convex directories
-      if (path.includes('convex') || path.includes('_generated')) {
-        console.log('[fs] writeFileSync:', path);
-      }
       vfs.writeFileSync(path, data);
     },
 
@@ -455,10 +437,6 @@ export function createFsShim(vfs: VirtualFS, getCwd?: () => string): FsShim {
 
     mkdirSync(pathLike: unknown, options?: { recursive?: boolean }): void {
       const path = resolvePath(pathLike);
-      // Debug: Log when creating convex directories
-      if (path.includes('convex') || path.includes('_generated')) {
-        console.log('[fs] mkdirSync:', path, options);
-      }
       vfs.mkdirSync(path, options);
     },
 
@@ -725,9 +703,16 @@ export function createFsShim(vfs: VirtualFS, getCwd?: () => string): FsShim {
       vfs.renameSync(resolvePath(oldPathLike), resolvePath(newPathLike));
     },
 
-    realpathSync(pathLike: unknown): string {
-      return vfs.realpathSync(resolvePath(pathLike));
-    },
+    realpathSync: Object.assign(
+      function realpathSync(pathLike: unknown): string {
+        return vfs.realpathSync(resolvePath(pathLike));
+      },
+      {
+        native(pathLike: unknown): string {
+          return vfs.realpathSync(resolvePath(pathLike));
+        },
+      }
+    ),
 
     accessSync(pathLike: unknown, _mode?: number): void {
       vfs.accessSync(resolvePath(pathLike));
@@ -767,10 +752,35 @@ export function createFsShim(vfs: VirtualFS, getCwd?: () => string): FsShim {
 
     readdir(
       pathLike: unknown,
-      optionsOrCallback?: { withFileTypes?: boolean } | ((err: Error | null, files?: string[]) => void),
-      callback?: (err: Error | null, files?: string[]) => void
+      optionsOrCallback?: { withFileTypes?: boolean } | ((err: Error | null, files?: string[] | Dirent[]) => void),
+      callback?: (err: Error | null, files?: string[] | Dirent[]) => void
     ): void {
-      vfs.readdir(resolvePath(pathLike), optionsOrCallback as { withFileTypes?: boolean }, callback);
+      const cb = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+      const opts = typeof optionsOrCallback === 'function' ? undefined : optionsOrCallback;
+      const path = resolvePath(pathLike);
+      try {
+        const entries = vfs.readdirSync(path);
+        if (opts?.withFileTypes) {
+          const dirents: Dirent[] = entries.map(name => {
+            const entryPath = path.endsWith('/') ? path + name : path + '/' + name;
+            let isDir = false;
+            let isFile = false;
+            try {
+              const stat = vfs.statSync(entryPath);
+              isDir = stat.isDirectory();
+              isFile = stat.isFile();
+            } catch {
+              isFile = true;
+            }
+            return new Dirent(name, isDir, isFile);
+          });
+          cb?.(null, dirents);
+        } else {
+          cb?.(null, entries);
+        }
+      } catch (err) {
+        cb?.(err as Error);
+      }
     },
 
     realpath(pathLike: unknown, callback: (err: Error | null, resolvedPath?: string) => void): void {

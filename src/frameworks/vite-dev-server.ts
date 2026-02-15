@@ -8,6 +8,7 @@ import { VirtualFS } from '../virtual-fs';
 import { Buffer } from '../shims/stream';
 import { simpleHash } from '../utils/hash';
 import { addReactRefresh as _addReactRefresh } from './code-transforms';
+import { ESBUILD_WASM_ESM_CDN, ESBUILD_WASM_BINARY_CDN, REACT_REFRESH_CDN, REACT_CDN, REACT_DOM_CDN } from '../config/cdn';
 
 // Check if we're in a real browser environment (not jsdom or Node.js)
 // jsdom has window but doesn't have ServiceWorker or SharedArrayBuffer
@@ -38,14 +39,14 @@ async function initEsbuild(): Promise<void> {
     try {
       const mod = await import(
         /* @vite-ignore */
-        'https://esm.sh/esbuild-wasm@0.20.0'
+        ESBUILD_WASM_ESM_CDN
       );
 
       const esbuildMod = mod.default || mod;
 
       try {
         await esbuildMod.initialize({
-          wasmURL: 'https://unpkg.com/esbuild-wasm@0.20.0/esbuild.wasm',
+          wasmURL: ESBUILD_WASM_BINARY_CDN,
         });
         console.log('[ViteDevServer] esbuild-wasm initialized');
       } catch (initError) {
@@ -106,7 +107,7 @@ const REACT_REFRESH_PREAMBLE = `
 <script type="module">
 // Block until React Refresh is loaded and initialized
 // This MUST happen before React is imported
-const RefreshRuntime = await import('https://esm.sh/react-refresh@0.14.0/runtime').then(m => m.default || m);
+const RefreshRuntime = await import('${REACT_REFRESH_CDN}').then(m => m.default || m);
 
 // Hook into React BEFORE it's loaded
 RefreshRuntime.injectIntoGlobalHook(window);
@@ -625,6 +626,26 @@ export default css;
   private serveHtmlWithHMR(filePath: string): ResponseData {
     try {
       let content = this.vfs.readFileSync(filePath, 'utf8');
+
+      // Inject a React import map if the HTML doesn't already have one.
+      // This lets seed HTML omit the esm.sh boilerplate — the platform provides it.
+      if (!content.includes('"importmap"')) {
+        const importMap = `<script type="importmap">
+{
+  "imports": {
+    "react": "${REACT_CDN}?dev",
+    "react/": "${REACT_CDN}&dev/",
+    "react-dom": "${REACT_DOM_CDN}?dev",
+    "react-dom/": "${REACT_DOM_CDN}&dev/"
+  }
+}
+</script>`;
+        if (content.includes('</head>')) {
+          content = content.replace('</head>', `${importMap}\n</head>`);
+        } else if (content.includes('<head>')) {
+          content = content.replace('<head>', `<head>\n${importMap}`);
+        }
+      }
 
       // Inject React Refresh preamble before any app module scripts.
       // Firefox requires all <script type="importmap"> to appear before any <script type="module">,
